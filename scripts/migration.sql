@@ -114,7 +114,7 @@ INSERT INTO stg_tax_rates VALUES
 -- Output: stg_output (what Validation Agent compares against talend_reference.csv)
 CREATE TABLE stg_output AS
 SELECT
-    s.belnr                              AS invoice_id,
+    s.belnr                              AS invoice_iddd,
     s.sap_vendor_id                      AS vendor_id,
     v.vendor_name                        AS vendor_name,
     v.country_code                       AS country_code,

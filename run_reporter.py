@@ -211,8 +211,20 @@ def run_comparison():
     rounding   = check_rounding(talend_norm, sql_norm)
     row_level  = check_row_level(talend_norm, sql_norm)
 
+    # Track whether ALL checks passed -- not just match rate
+    all_checks_passed = (
+        structure["row_count_match"]
+        and structure["column_match"]
+        and all(r["passed"] for r in forbidden.values())
+        and all(r["passed"] for r in exact.values())
+        and all(r["passed"] for r in rounding.values())
+    )
+
     match_rate = row_level["match_rate"]
-    decision   = "PASS" if match_rate >= PASS_THRESHOLD else "FAIL"
+    # CRITICAL: match rate alone is not enough.
+    # A missing/renamed column still gives 100% match on remaining cols.
+    # All structural and column checks must also pass.
+    decision   = "PASS" if (match_rate >= PASS_THRESHOLD and all_checks_passed) else "FAIL"
 
     logger.info(f"Match rate : {match_rate:.2%}")
     logger.info(f"Decision   : {decision}")
@@ -521,6 +533,60 @@ def build_report(results: dict) -> str:
             shade_row(row, "FADBD8")
     doc.add_paragraph()
 
+
+    # ==============================================================
+    # SECTION 6 - LLM REVIEW
+    # ==============================================================
+    add_heading("6. LLM Review", level=1)
+    llm = results.get("llm_review")
+
+    if not llm:
+        doc.add_paragraph("LLM review not run. Execute run_llm_reviewer.py to add AI analysis.")
+    else:
+        # Mode badge
+        mode_text = "Claude API (Live)" if llm["mode"] == "live" else "Mock Mode (no API key)"
+        p = doc.add_paragraph()
+        p.add_run(f"Mode: {mode_text}  |  Reviewed at: {llm.get('reviewed_at', 'N/A')}").italic = True
+        doc.add_paragraph()
+
+        # Final LLM decision banner
+        llm_decision = llm.get("final_decision", "N/A")
+        llm_color    = COLOR_GREEN if llm_decision == "PASS" else (
+                       COLOR_GREY  if llm_decision == "PASS_WITH_WARNINGS" else COLOR_RED)
+        banner = doc.add_paragraph()
+        run    = banner.add_run(f"  LLM DECISION: {llm_decision}  ")
+        run.bold           = True
+        run.font.size      = Pt(13)
+        run.font.color.rgb = llm_color
+        doc.add_paragraph()
+
+        # Risk level
+        risk     = llm.get("risk_level", "N/A")
+        risk_col = COLOR_GREEN if "LOW" in str(risk) else (
+                   COLOR_GREY  if "MEDIUM" in str(risk) else COLOR_RED)
+        rp  = doc.add_paragraph()
+        rr  = rp.add_run(f"Risk Level: {risk}")
+        rr.bold           = True
+        rr.font.color.rgb = risk_col
+        doc.add_paragraph()
+
+        # Content sections
+        sections = [
+            ("Decision Reasoning",   "decision_reasoning"),
+            ("Difference Analysis",  "difference_analysis"),
+            ("SQL Fix",              "sql_fix"),
+        ]
+        for title, key in sections:
+            val = llm.get(key)
+            if val:
+                h = doc.add_heading(title, level=2)
+                for run in h.runs:
+                    run.font.color.rgb = COLOR_BLUE
+                for line in val.splitlines():
+                    if line.strip():
+                        doc.add_paragraph(line.strip())
+                doc.add_paragraph()
+
     # ==============================================================
     # SAVE
     # ==============================================================
@@ -551,8 +617,25 @@ def main():
         sys.exit(1)
     print()
 
-    # Step 2: Generate report
-    print("STEP 2: Generating Word report")
+    # Step 2: LLM Review
+    print("STEP 2: LLM Review")
+    print(STEP_LINE)
+    try:
+        import importlib.util, pathlib
+        _root = pathlib.Path(__file__).parent
+        spec  = importlib.util.spec_from_file_location(
+            "run_llm_reviewer", str(_root / "run_llm_reviewer.py")
+        )
+        llm_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(llm_mod)
+        results = llm_mod.run_llm_review(results)
+    except Exception as e:
+        logger.warning(f"LLM review skipped: {e}")
+        logger.warning("Report will be generated without LLM section.")
+    print()
+
+    # Step 3: Generate report
+    print("STEP 3: Generating Word report")
     print(STEP_LINE)
     try:
         report_path = build_report(results)
@@ -564,16 +647,25 @@ def main():
 
     # Final summary
     print(SEPARATOR)
-    decision = results["decision"]
-    if decision == "PASS":
-        logger.success(f"FINAL DECISION : PASS")
-    else:
-        logger.error(f"FINAL DECISION : FAIL")
-    logger.info(f"Match rate     : {results['match_rate']:.2%}")
-    logger.info(f"Report         : {report_path}")
+    comparison_decision = results["decision"]
+    llm_decision        = results.get("llm_review", {}).get("final_decision")
+    risk_level          = results.get("llm_review", {}).get("risk_level", "N/A")
+    final_decision      = llm_decision or comparison_decision
+
+    logger.info(f"Comparison decision : {comparison_decision}")
+    if llm_decision:
+        if llm_decision == "PASS":
+            logger.success(f"LLM decision        : {llm_decision}")
+        elif llm_decision == "PASS_WITH_WARNINGS":
+            logger.warning(f"LLM decision        : {llm_decision}")
+        else:
+            logger.error(f"LLM decision        : {llm_decision}")
+    logger.info(f"Risk level          : {risk_level}")
+    logger.info(f"Match rate          : {results['match_rate']:.2%}")
+    logger.info(f"Report              : {report_path}")
     print(SEPARATOR + "\n")
 
-    return decision == "PASS"
+    return final_decision in ["PASS", "PASS_WITH_WARNINGS"]
 
 
 if __name__ == "__main__":

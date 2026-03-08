@@ -404,8 +404,12 @@ def run_comparison() -> bool:
     print_section("STEP 7: Full Row-Level Comparison")
     row_results = check_row_level(talend_norm, sql_norm)
 
-    match_rate   = row_results["match_rate"]
-    final_decision = "PASS" if match_rate >= PASS_THRESHOLD else "FAIL"
+    match_rate = row_results["match_rate"]
+
+    # Final decision uses BOTH match rate AND all previous checks.
+    # A 100% match rate on 13/14 columns is NOT a pass --
+    # if a column is missing or misnamed, that is a critical failure.
+    final_decision = "PASS" if (match_rate >= PASS_THRESHOLD and all_checks_passed) else "FAIL"
 
     logger.info(f"Total rows    : {row_results['total_rows']}")
     logger.info(f"Matched rows  : {row_results['matched_rows']}")
