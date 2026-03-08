@@ -76,21 +76,32 @@ def load_datasets() -> tuple[pd.DataFrame, pd.DataFrame]:
 def normalize(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normalize a DataFrame before comparison.
-    This prevents false negatives from trivial differences
-    like column name casing, extra whitespace, or float precision.
+    Prevents false negatives from trivial differences like column name
+    casing, whitespace, float precision, or type mismatches.
+
+    Key fix: integer columns (e.g. dates stored as int in SQLite)
+    are cast to string so they compare correctly against CSV strings.
+    Example: SQLite stores 20260206 as INTEGER, CSV has "20260206" as
+    STRING -- without this cast Pandas sees them as different even
+    though the values are identical.
     """
     df = df.copy()
 
     # Normalize column names: lowercase + strip spaces
     df.columns = df.columns.str.lower().str.strip()
 
-    # Normalize string columns: strip whitespace
-    for col in df.select_dtypes(include=["object"]).columns:
-        df[col] = df[col].astype(str).str.strip()
-
-    # Normalize numeric columns: round to tolerance
+    # Normalize float columns: round to tolerance
     for col in df.select_dtypes(include=["float64", "float32"]).columns:
         df[col] = df[col].round(NUMERIC_TOLERANCE)
+
+    # Cast integer columns to string
+    # Fixes date mismatch: SQLite int vs CSV string
+    for col in df.select_dtypes(include=["int64", "int32"]).columns:
+        df[col] = df[col].astype(str).str.strip()
+
+    # Normalize all string/object columns: strip whitespace
+    for col in df.select_dtypes(include=["object"]).columns:
+        df[col] = df[col].astype(str).str.strip()
 
     # Sort rows by invoice_id for consistent comparison
     if "invoice_id" in df.columns:
