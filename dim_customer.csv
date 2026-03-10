@@ -1,0 +1,9 @@
+customer_id,customer_name,region,segment
+1,Alice Martin,North,Retail
+2,Bob Johnson,South,Wholesale
+3,Carol White,East,Retail
+4,David Brown,West,Corporate
+5,Eva Green,North,Wholesale
+6,Frank Black,South,Retail
+7,Grace Lee,East,Corporate
+8,Henry Ford,West,Retail

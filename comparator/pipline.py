@@ -7,6 +7,7 @@ Loads data, infers schema, normalises, runs layers in order,
 computes the final decision, and returns the full result dict.
 """
 
+import json
 import sys
 import os
 from datetime import datetime
@@ -154,7 +155,7 @@ class ComparatorPipeline:
         l3c        = l3["checks"] if l3 else {}
         diff_data  = l2c.get("2.4_targeted_diff", {})
         match_rate = l2.get("match_rate", 0.0) if l2 else 0.0
-        return {
+        result = {
             "decision":    decision,
             "match_rate":  match_rate,
             "threshold":   PASS_THRESHOLD,
@@ -173,7 +174,7 @@ class ComparatorPipeline:
                 "columns_only_in_sql":    l1["checks"].get("1.1_column_naming", {}).get("extra_in_sql",   []),
                 "common_columns":         l1["checks"].get("1.1_column_naming", {}).get("common_columns", []),
             },
-            "forbidden": {},  # removed – requires human domain knowledge
+            
             "exact":   l3c.get("3.2_exact_match", {}) if l3 else {},
             "rounding": {
                 col: {
@@ -195,6 +196,18 @@ class ComparatorPipeline:
             },
             "layers": {"layer1": l1, "layer2": l2, "layer3": l3, "layer4": l4},
         }
+        def _save_result_as_json(self, result: dict, output_path: str = None) -> str:
+            """Save the result dictionary to a JSON file."""
+            if output_path is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = f"validation_result_{timestamp}.json"
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=2, ensure_ascii=False)
+            logger.info(f"Result saved to {output_path}")
+            return output_path
+        
+        _save_result_as_json(self, result, output_path="validation_result.json")
+        return result
 
     # ------------------------------------------------------------------
     # Display helpers

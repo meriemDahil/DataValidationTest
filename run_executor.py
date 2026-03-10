@@ -1,145 +1,136 @@
 """
 run_executor.py
 ---------------
-Standalone script to test SQL execution only.
-Run this first before touching any other part of the pipeline.
+1. Reads DDL from  ddl/schema.sql        → creates tables in SQLite (in-memory)
+2. Loads CSVs from data/*.csv            → populates each table by matching filename to table name
+3. Executes SQL from sql/transformation.sql → runs the transformation
+4. Saves result to data/talend_reference.csv  (acts as the Talend reference output)
+   AND      to data/stg_output.csv            (acts as the SQL staging output)
+
+In a real migration both files would come from different systems.
+Here we generate both from the same query so the comparator starts at PASS,
+giving you a known-good baseline to break intentionally for testing.
 
 Usage:
-    python run_executor.py                        # uses built-in sample SQL
-    python run_executor.py scripts/my_script.sql  # uses your own SQL file
+    python run_executor.py
 """
 
-import sys
 import os
+import sqlite3
+import pandas as pd
+from pathlib import Path
 from loguru import logger
 
-# Add project root to path so imports work
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# ------------------------------------------------------------------
+# Paths
+# ------------------------------------------------------------------
+BASE_DIR        = Path(__file__).parent
+DDL_PATH        = BASE_DIR / "ddl"  / "schema.sql"
+SQL_PATH        = BASE_DIR / "scripts"  / "transformations.sql"
+DATA_DIR        = BASE_DIR / "data"
+TALEND_OUT      = DATA_DIR / "talend_reference.csv"
+STG_OUT         = DATA_DIR / "stg_output.csv"
 
-from agent.tools.db import (
-    reset_database,
-    execute_sql_script,
-    list_tables,
-    preview_table,
-    get_row_count,
-)
-from agent.tools.sql_adapter import adapt_sql_for_sqlite
-
-
-# -- Configure logger for readable output -------------------------------------
-logger.remove()
-logger.add(
-    sys.stdout,
-    format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | {message}",
-    colorize=True,
-    level="DEBUG",
-)
+# Map CSV filename → table name (filename without .csv = table name)
+# All CSVs in data/ that match a CREATE TABLE in the DDL are loaded automatically.
 
 
-# -- Sample SQL ----------------------------------------------------------------
-# This mimics what a migration agent would generate.
-# Replace this with your real SQL or pass a file path as argument.
+def load_ddl(conn: sqlite3.Connection, ddl_path: Path):
+    """Execute the DDL script to create all tables."""
+    logger.info(f"Loading DDL from {ddl_path}")
+    ddl = ddl_path.read_text(encoding="utf-8")
+    conn.executescript(ddl)
+    conn.commit()
+    logger.success("Tables created successfully")
 
-SAMPLE_SQL = "scripts/migration.sql"
 
-with open(SAMPLE_SQL, "r") as f:
-    SAMPLE_SQL = f.read()
-def run(sql_script: str) -> bool:
+def load_csvs(conn: sqlite3.Connection, data_dir: Path):
     """
-    Execute a SQL script and print a full diagnostic report.
-    Returns True if successful, False if failed.
+    Load every CSV in data_dir into the SQLite connection.
+    The table name is derived from the CSV filename (without extension).
+    Skips files that don't match an existing table.
     """
+    # Get existing table names from the DB
+    cursor     = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    db_tables  = {row[0] for row in cursor.fetchall()}
 
-    print("\n" + "=" * 60)
-    print("  VALIDATION AGENT — SQL EXECUTION STEP")
-    print("=" * 60 + "\n")
+    for csv_file in sorted(data_dir.glob("*.csv")):
+        table_name = csv_file.stem  # e.g. dim_customer.csv → dim_customer
+        if table_name not in db_tables:
+            logger.warning(f"Skipping {csv_file.name} — no matching table '{table_name}' in DB")
+            continue
 
-    # -- Step 1: Reset database ----------------------------------------
-    print("-- STEP 1: Reset Database ----------------------------------")
-    reset_database()
-    print()
+        df = pd.read_csv(csv_file)
+        df.to_sql(table_name, conn, if_exists="replace", index=False)
+        logger.success(f"Loaded {csv_file.name} → table '{table_name}'  ({len(df)} rows)")
 
-    # -- Step 2: Adapt SQL for SQLite if needed ------------------------
-    print("-- STEP 2: SQL Adaptation ----------------------------------")
-    adapted_sql = adapt_sql_for_sqlite(sql_script)
-    print()
 
-    # -- Step 3: Execute SQL -------------------------------------------
-    print("-- STEP 3: Execute SQL Script ------------------------------")
-    result = execute_sql_script(adapted_sql)
-    print()
+def run_transformation(conn: sqlite3.Connection, sql_path: Path) -> pd.DataFrame:
+    """Execute the transformation SQL and return the result as a DataFrame."""
+    logger.info(f"Running transformation from {sql_path}")
+    sql    = sql_path.read_text(encoding="utf-8")
+    result = pd.read_sql_query(sql, conn)
+    logger.success(f"Transformation complete — {len(result)} rows returned")
+    return result
 
-    # -- Step 4: Report execution result ------------------------------
-    print("-- STEP 4: Execution Result --------------------------------")
-    if result["status"] == "success":
-        logger.success(
-            f"OK Executed {result['statements_executed']} / "
-            f"{result['total_statements']} statements successfully"
-        )
-    else:
-        logger.error(f"FAILED Execution FAILED")
-        logger.error(f"  Error: {result['error']}")
-        logger.error(
-            f"  Failed at statement "
-            f"{result['statements_executed'] + 1} / "
-            f"{result['total_statements']}"
-        )
-        print("\n" + "=" * 60)
-        print("  RESULT: FAILED FAILED")
-        print("=" * 60 + "\n")
-        return False
-    print()
 
-    # -- Step 5: Verify tables were created ----------------------------
-    print("-- STEP 5: Tables in Database ------------------------------")
-    tables = list_tables()
-    if tables:
-        for t in tables:
-            row_count = get_row_count(t)
-            logger.info(f"  Table: '{t}' -> {row_count} rows")
-    else:
-        logger.warning("  No tables found in database after execution!")
-    print()
+def save_outputs(result: pd.DataFrame):
+    """
+    Save the transformation result as both the Talend reference and SQL staging output.
+    In a real scenario these would come from two different systems.
+    Here both are identical to give the comparator a clean PASS baseline.
+    """
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    result.to_csv(TALEND_OUT, index=False)
+    result.to_csv(STG_OUT,    index=False)
+    logger.success(f"Saved Talend reference → {TALEND_OUT}")
+    logger.success(f"Saved SQL staging output → {STG_OUT}")
 
-    # -- Step 6: Preview staging table --------------------------------
-    print("-- STEP 6: Data Preview (stg_output) ----------------------")
-    if "stg_output" in tables:
-        total_rows = get_row_count("stg_output")
-        logger.info(f"Total rows in stg_output: {total_rows}")
-        print()
 
-        df = preview_table("stg_output", rows=10)
-        print(df.to_string(index=False))
-        print()
-    else:
-        logger.warning(
-            "Table 'stg_output' not found. "
-            "Make sure your SQL creates a table named 'stg_output'."
-        )
+def preview(result: pd.DataFrame):
+    logger.info("Transformation result preview:")
+    print(result.to_string(index=False))
 
-    # -- Final result --------------------------------------------------
-    print("=" * 60)
-    print("  RESULT: SUCCESS OK")
-    print(f"  Database: {os.getenv('DB_PATH', './data/validation_test.db')}")
-    print("  Ready for comparison step.")
-    print("=" * 60 + "\n")
 
-    return True
+# ------------------------------------------------------------------
+# DB helper used by the comparator (load_table_as_dataframe shim)
+# ------------------------------------------------------------------
+
+def get_connection() -> sqlite3.Connection:
+    """
+    Returns a fresh in-memory SQLite connection with all tables loaded.
+    Used by the comparator's db.py if you point it here.
+    """
+    conn = sqlite3.connect(":memory:")
+    load_ddl(conn, DDL_PATH)
+    load_csvs(conn, DATA_DIR)
+    return conn
+
+
+# ------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------
+
+def main():
+    logger.info("=" * 60)
+    logger.info("  SQL EXECUTOR — mock pipeline")
+    logger.info("=" * 60)
+
+    conn = sqlite3.connect(":memory:")
+
+    try:
+        load_ddl(conn, DDL_PATH)
+        load_csvs(conn, DATA_DIR)
+        result = run_transformation(conn, SQL_PATH)
+        preview(result)
+        save_outputs(result)
+    finally:
+        conn.close()
+
+    logger.info("=" * 60)
+    logger.info("  Done. Run run_comparator.py to validate.")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
-    # Allow passing a SQL file path as argument
-    if len(sys.argv) > 1:
-        sql_file = sys.argv[1]
-        if not os.path.exists(sql_file):
-            print(f"Error: File not found: {sql_file}")
-            sys.exit(1)
-        with open(sql_file, encoding="utf-8") as f:
-            sql = f.read()
-        logger.info(f"Using SQL from file: {sql_file}")
-    else:
-        logger.info("No file provided — using built-in sample SQL")
-        sql = SAMPLE_SQL
-
-    success = run(sql)
-    sys.exit(0 if success else 1)
+    main()

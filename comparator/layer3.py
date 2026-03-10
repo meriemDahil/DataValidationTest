@@ -9,7 +9,6 @@ Checks:
   3.4  Aggregation: every (numeric x categorical) pair, capped at MAX_AGG_PAIRS
   3.5  Referential integrity: SQL must not introduce values absent from Talend
 
-Note: 3.1 (forbidden values) was removed – requires human domain knowledge.
 """
 
 import pandas as pd
