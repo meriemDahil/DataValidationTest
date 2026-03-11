@@ -16,7 +16,7 @@ load_dotenv()
 # -- Connection setup ----------------------------------------------------------
 
 DB_TYPE = os.getenv("DB_TYPE", "sqlite")
-DB_PATH = os.getenv("DB_PATH", "./data/validation_test.db")
+DB_PATH = os.getenv("DB_PATH", "./data/data/pipeline.db")
 
 
 def _get_engine():

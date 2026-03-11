@@ -1,110 +1,107 @@
 """
 run_executor.py
 ---------------
-1. Reads DDL from  ddl/schema.sql        → creates tables in SQLite (in-memory)
-2. Loads CSVs from data/*.csv            → populates each table by matching filename to table name
-3. Executes SQL from sql/transformation.sql → runs the transformation
-4. Saves result to data/talend_reference.csv  (acts as the Talend reference output)
-   AND      to data/stg_output.csv            (acts as the SQL staging output)
-
-In a real migration both files would come from different systems.
-Here we generate both from the same query so the comparator starts at PASS,
-giving you a known-good baseline to break intentionally for testing.
+1. Resets the database (deletes pipeline.db if exists)
+2. Reads DDL from  ddl/schema.sql             → creates tables via db.execute_sql_script()
+3. Loads CSVs from data/*.csv                 → populates each table via SQLAlchemy
+4. Executes SQL from scripts/transformations.sql → runs the transformation
+5. Saves result as table 'stg_output' in pipeline.db  (queried by the comparator)
+6. Saves result to data/talend_reference.csv          (Talend baseline for comparator)
 
 Usage:
     python run_executor.py
 """
 
-import os
-import sqlite3
 import pandas as pd
 from pathlib import Path
 from loguru import logger
 
+from agent.tools.db import (
+    reset_database,
+    execute_sql_script,
+    list_tables,
+    load_table_as_dataframe,
+    _get_engine,
+)
+
 # ------------------------------------------------------------------
 # Paths
 # ------------------------------------------------------------------
-BASE_DIR        = Path(__file__).parent
-DDL_PATH        = BASE_DIR / "ddl"  / "schema.sql"
-SQL_PATH        = BASE_DIR / "scripts"  / "transformations.sql"
-DATA_DIR        = BASE_DIR / "data"
-TALEND_OUT      = DATA_DIR / "talend_reference.csv"
-STG_OUT         = DATA_DIR / "stg_output.csv"
-
-# Map CSV filename → table name (filename without .csv = table name)
-# All CSVs in data/ that match a CREATE TABLE in the DDL are loaded automatically.
+BASE_DIR   = Path(__file__).parent
+DDL_PATH   = BASE_DIR / "ddl"     / "schema.sql"
+SQL_PATH   = BASE_DIR / "scripts" / "transformations.sql"
+DATA_DIR   = BASE_DIR / "data"
+TALEND_OUT = DATA_DIR / "talend_reference.csv"
 
 
-def load_ddl(conn: sqlite3.Connection, ddl_path: Path):
-    """Execute the DDL script to create all tables."""
+# ------------------------------------------------------------------
+# Pipeline steps
+# ------------------------------------------------------------------
+
+def load_ddl(ddl_path: Path):
+    """Read and execute the DDL script to create all tables."""
     logger.info(f"Loading DDL from {ddl_path}")
-    ddl = ddl_path.read_text(encoding="utf-8")
-    conn.executescript(ddl)
-    conn.commit()
+    ddl    = ddl_path.read_text(encoding="utf-8")
+    result = execute_sql_script(ddl)
+    if result["status"] != "success":
+        raise RuntimeError(f"DDL execution failed: {result['error']}")
     logger.success("Tables created successfully")
 
 
-def load_csvs(conn: sqlite3.Connection, data_dir: Path):
+def load_csvs(data_dir: Path):
     """
-    Load every CSV in data_dir into the SQLite connection.
-    The table name is derived from the CSV filename (without extension).
-    Skips files that don't match an existing table.
+    Load every CSV in data_dir into the database.
+    Table name is derived from the CSV filename (without extension).
+    Skips files that don't match an existing table in the DDL.
     """
-    # Get existing table names from the DB
-    cursor     = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    db_tables  = {row[0] for row in cursor.fetchall()}
+    engine    = _get_engine()
+    db_tables = set(list_tables())
 
     for csv_file in sorted(data_dir.glob("*.csv")):
-        table_name = csv_file.stem  # e.g. dim_customer.csv → dim_customer
+        table_name = csv_file.stem
         if table_name not in db_tables:
             logger.warning(f"Skipping {csv_file.name} — no matching table '{table_name}' in DB")
             continue
-
         df = pd.read_csv(csv_file)
-        df.to_sql(table_name, conn, if_exists="replace", index=False)
+        df.to_sql(table_name, engine, if_exists="replace", index=False)
         logger.success(f"Loaded {csv_file.name} → table '{table_name}'  ({len(df)} rows)")
 
 
-def run_transformation(conn: sqlite3.Connection, sql_path: Path) -> pd.DataFrame:
+def run_transformation(sql_path: Path) -> pd.DataFrame:
     """Execute the transformation SQL and return the result as a DataFrame."""
     logger.info(f"Running transformation from {sql_path}")
     sql    = sql_path.read_text(encoding="utf-8")
-    result = pd.read_sql_query(sql, conn)
+    engine = _get_engine()
+
+    with engine.connect() as conn:
+        result = pd.read_sql(sql, conn)
+
     logger.success(f"Transformation complete — {len(result)} rows returned")
     return result
 
 
 def save_outputs(result: pd.DataFrame):
     """
-    Save the transformation result as both the Talend reference and SQL staging output.
-    In a real scenario these would come from two different systems.
-    Here both are identical to give the comparator a clean PASS baseline.
+    Persist the transformation result in two places:
+      1. DB table 'stg_output'       → queried by the comparator via load_table_as_dataframe()
+      2. data/talend_reference.csv   → CSV baseline read by the comparator
     """
+    engine = _get_engine()
+
+    # Write into the DB so the comparator can query it
+    result.to_sql("stg_output", engine, if_exists="replace", index=False)
+    logger.success("Saved result → DB table 'stg_output'")
+
+    # Write Talend reference CSV (acts as the expected/baseline output)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     result.to_csv(TALEND_OUT, index=False)
-    result.to_csv(STG_OUT,    index=False)
     logger.success(f"Saved Talend reference → {TALEND_OUT}")
-    logger.success(f"Saved SQL staging output → {STG_OUT}")
 
 
 def preview(result: pd.DataFrame):
+    """Display the transformation result in a human-readable table format."""
     logger.info("Transformation result preview:")
     print(result.to_string(index=False))
-
-
-# ------------------------------------------------------------------
-# DB helper used by the comparator (load_table_as_dataframe shim)
-# ------------------------------------------------------------------
-
-def get_connection() -> sqlite3.Connection:
-    """
-    Returns a fresh in-memory SQLite connection with all tables loaded.
-    Used by the comparator's db.py if you point it here.
-    """
-    conn = sqlite3.connect(":memory:")
-    load_ddl(conn, DDL_PATH)
-    load_csvs(conn, DATA_DIR)
-    return conn
 
 
 # ------------------------------------------------------------------
@@ -116,16 +113,21 @@ def main():
     logger.info("  SQL EXECUTOR — mock pipeline")
     logger.info("=" * 60)
 
-    conn = sqlite3.connect(":memory:")
+    # Step 1: Wipe existing DB for a clean run
+    reset_database()
 
-    try:
-        load_ddl(conn, DDL_PATH)
-        load_csvs(conn, DATA_DIR)
-        result = run_transformation(conn, SQL_PATH)
-        preview(result)
-        save_outputs(result)
-    finally:
-        conn.close()
+    # Step 2: Create tables from DDL schema
+    load_ddl(DDL_PATH)
+
+    # Step 3: Populate tables from CSV files
+    load_csvs(DATA_DIR)
+
+    # Step 4: Run the SQL transformation
+    result = run_transformation(SQL_PATH)
+    preview(result)
+
+    # Step 5: Save to DB (stg_output table) + talend_reference.csv
+    save_outputs(result)
 
     logger.info("=" * 60)
     logger.info("  Done. Run run_comparator.py to validate.")
