@@ -4,381 +4,423 @@ comparator/layer1.py
 LAYER 1 – Structural Validation  (fail-fast)
 
 Checks:
-  1.1  Column naming  (set equality)
-  1.2  Column count
-  1.3  Data types     (compatible dtypes)
-  1.4  Nullability    (null-ratio diff <= NULL_RATIO_THRESHOLD)
-  1.5  Column order   (warning only)
+  1.1  Column naming  (set equality — missing / extra columns)
+  1.2  Data types     (family-based compatibility)
+  1.3  Column order   (warning only — does not fail)
+
+Design decisions:
+  - Nullability (null-ratio diff) was moved to Layer 4 where it belongs.
+    It is a data-quality check, not a structural one, and should not
+    block the pipeline as a fatal error.
+  - Column count is intentionally NOT a separate check: if 1.1 (set
+    equality) passes, both DataFrames have identical column sets and
+    therefore identical counts. A separate count check would be
+    unreachable dead code.
+  - "fatal" has been removed from the result dict. It was always equal
+    to `not passed`, making it redundant. Callers should check `passed`.
+  - Warnings are collected in a top-level "warnings" list so callers
+    can surface them without treating them as failures.
+
+Null handling:
+  - NULL/NaN column names (e.g. from a bad CSV parse) are detected in
+    1.1 before set comparison, because NaN != NaN in Python so they
+    cause silent false PASSes or KeyErrors downstream.
+  - All-null columns get dtype float64 in pandas (NaN is a float).
+    In 1.2 we detect these and skip the type comparison for them,
+    recording a warning instead of a false FAIL.
 """
 
 import pandas as pd
 from loguru import logger
 
-from .config import NULL_RATIO_THRESHOLD, STEP_LINE
+from .config import STEP_LINE
 
+
+# ---------------------------------------------------------------------------
+# Type-family mapping used by check 1.2
+# ---------------------------------------------------------------------------
+
+_NUMERIC_TYPES = {
+    "int8", "int16", "int32", "int64",
+    "uint8", "uint16", "uint32", "uint64",
+    "float16", "float32", "float64",
+    # pandas nullable integer / float extensions (capital-I / capital-F)
+    "Int8", "Int16", "Int32", "Int64",
+    "UInt8", "UInt16", "UInt32", "UInt64",
+    "Float32", "Float64",
+}
+
+_STRING_TYPES   = {"object", "string", "StringDtype"}
+_BOOL_TYPES     = {"bool", "boolean"}  # "boolean" = pandas nullable BooleanDtype
+
+
+def _type_family(dtype_str: str) -> str:
+    """
+    Map a pandas dtype string to a broad compatibility family.
+
+    Families
+    --------
+    numeric  – any integer or float variant (signed, unsigned, nullable)
+    string   – object / StringDtype
+    bool     – bool / nullable BooleanDtype
+    datetime – any datetime64 resolution
+    timedelta– timedelta64
+    category – CategoricalDtype
+    complex  – complex64 / complex128
+    <dtype>  – unknown types are their own family (no cross-type compat)
+    """
+    if dtype_str in _NUMERIC_TYPES:
+        return "numeric"
+    if dtype_str in _STRING_TYPES:
+        return "string"
+    if dtype_str in _BOOL_TYPES:
+        return "bool"
+    if dtype_str.startswith("datetime"):
+        return "datetime"
+    if dtype_str.startswith("timedelta"):
+        return "timedelta"
+    if dtype_str.startswith("complex"):
+        return "complex"
+    if dtype_str.startswith("category") or dtype_str == "CategoricalDtype":
+        return "category"
+    # Fallback: treat the raw dtype string as its own family so unknown
+    # types only match themselves.
+    return dtype_str
+
+
+# ---------------------------------------------------------------------------
+# Layer 1 class
+# ---------------------------------------------------------------------------
 
 class Layer1Structural:
     """
     Layer 1 – Fail-fast structural validation.
-    
-    Compares two data sources (Talend reference vs SQL output) for structural compatibility:
-    - Column names must match (set equality)
-    - Column count must match
-    - Data types must be compatible
-    - Null ratios must be within tolerance
-    - Column order is checked (warning only, does not fail)
-    
-    If any of the first four checks fail, the comparison stops immediately (fatal).
+
+    Validates that the SQL output and the Talend reference have a compatible
+    *shape* before any data-level comparison is attempted.  Only schema/
+    structure concerns live here; data-quality concerns (null ratios,
+    distributions) belong in Layers 2–4.
+
+    Result schema
+    -------------
+    {
+        "layer"   : 1,
+        "passed"  : bool,
+        "warnings": [str, ...],   # non-fatal issues (e.g. column order)
+        "checks"  : {
+            "1.1_column_naming": {...},
+            "1.2_data_types"   : {...},
+            "1.3_column_order" : {...},
+        }
+    }
     """
 
     def __init__(self, talend_df: pd.DataFrame, sql_df: pd.DataFrame):
-        """
-        Initialize the structural validator with reference and output DataFrames.
-        
-        Args:
-            talend_df: Talend reference data (expected/baseline)
-            sql_df:    SQL output data (actual transformation result)
-        """
         self.talend_df = talend_df
         self.sql_df    = sql_df
 
     # ------------------------------------------------------------------
-    # Public entry point – Execute all structural checks
+    # Public entry point
     # ------------------------------------------------------------------
 
     def run(self) -> dict:
         """
-        Execute all structural validation checks in sequence.
-        
-        Performs a fail-fast approach: stops immediately on first structural failure.
-        Note: Column order check is warning-only and does not trigger fatal failure.
-        
-        Returns:
-            dict: Validation results with structure:
-                {
-                    "layer": 1,
-                    "passed": bool,
-                    "fatal": bool,  # True if structural failure prevents further checks
-                    "checks": {
-                        "1.1_column_naming": {...},
-                        "1.2_column_count": {...},
-                        "1.3_data_types": {...},
-                        "1.4_nullability": {...},
-                        "1.5_column_order": {...}
-                    }
-                }
+        Execute all structural checks in sequence.
+
+        Fail-fast: the first hard failure returns immediately so that
+        misleading downstream errors are not reported.
+        Check 1.3 (column order) is warning-only and never triggers a
+        hard failure.
         """
-        # Print section header for visibility in log output
-        self._print_section()
-        
-        # Initialize results structure with layer info and empty checks
-        results = {"layer": 1, "passed": True, "checks": {}, "fatal": False}
+        print()
+        print(STEP_LINE)
+        print("  LAYER 1 – Structural Validation")
+        print(STEP_LINE)
 
-        # Extract column names from both DataFrames for comparison
-        t_cols = list(self.talend_df.columns)  # Preserve order from Talend
-        s_cols = list(self.sql_df.columns)     # Preserve order from SQL
-        t_set  = set(t_cols)                   # For set operations (comparison)
-        s_set  = set(s_cols)                   # For set operations (comparison)
+        results = {
+            "layer"   : 1,
+            "passed"  : True,
+            "warnings": [],
+            "checks"  : {},
+        }
 
-        # ============================================================
-        # Check 1.1: Column naming (set equality – no extra/missing)
-        # ============================================================
-        ok, payload = self._check_column_naming(t_set, s_set)
+        t_cols = list(self.talend_df.columns)
+        s_cols = list(self.sql_df.columns)
+
+        # ── 1.1 Column naming ────────────────────────────────────────
+        ok, payload = self._check_column_naming(t_cols, s_cols)
         results["checks"]["1.1_column_naming"] = payload
         if not ok:
-            # Fatal failure: column names must match exactly
             results["passed"] = False
-            results["fatal"]  = True
-            logger.error("STRUCTURAL FAIL – stopping pipeline. Fix column names first.")
+            logger.error("Layer 1 FAILED at 1.1 – aborting structural checks.")
             return results
 
-        # ============================================================
-        # Check 1.2: Column count (total number of columns)
-        # ============================================================
-        ok, payload = self._check_column_count(t_cols, s_cols)
-        results["checks"]["1.2_column_count"] = payload
+        # ── 1.2 Data types ───────────────────────────────────────────
+        # Safe to iterate self.talend_df.columns directly: 1.1 guarantees
+        # both DataFrames have the same column set.
+        ok, payload = self._check_data_types()
+        results["checks"]["1.2_data_types"] = payload
         if not ok:
-            # Fatal failure: column counts must match
             results["passed"] = False
-            results["fatal"]  = True
-            logger.error("STRUCTURAL FAIL – stopping pipeline.")
+            logger.error("Layer 1 FAILED at 1.2 – aborting structural checks.")
             return results
+        # Surface all-null column warnings at the top level
+        results["warnings"].extend(payload.get("warnings", []))
 
-        # ============================================================
-        # Check 1.3: Data types (compatible dtypes for each column)
-        # ============================================================
-        ok, payload = self._check_data_types(t_set, s_set)
-        results["checks"]["1.3_data_types"] = payload
-        if not ok:
-            # Fatal failure: data types must be compatible
-            results["passed"] = False
-            results["fatal"]  = True
-            logger.error("STRUCTURAL FAIL – stopping pipeline.")
-            return results
+        # ── 1.3 Column order (warning only) ──────────────────────────
+        ok, payload, warning = self._check_column_order(t_cols, s_cols)
+        results["checks"]["1.3_column_order"] = payload
+        if not ok and warning:
+            results["warnings"].append(warning)
 
-        # ============================================================
-        # Check 1.4: Nullability (null ratio difference tolerance)
-        # ============================================================
-        ok, payload = self._check_nullability(t_set, s_set)
-        results["checks"]["1.4_nullability"] = payload
-        if not ok:
-            # Fatal failure: null ratios must be within threshold
-            results["passed"] = False
-            results["fatal"]  = True
-            logger.error("STRUCTURAL FAIL – stopping pipeline.")
-            return results
-
-        # ============================================================
-        # Check 1.5: Column order (warning only – does not fail)
-        # ============================================================
-        _ok, payload = self._check_column_order(t_cols, s_cols)
-        results["checks"]["1.5_column_order"] = payload
-        # Note: Column order mismatch is logged as a warning but does not set "fatal"
-
-        # All structural checks passed
-        results["passed"] = True
         return results
 
     # ------------------------------------------------------------------
-    # Individual validation checks (1.1 through 1.5)
+    # Check 1.1 – Column naming
     # ------------------------------------------------------------------
 
-    def _check_column_naming(self, t_set: set, s_set: set) -> tuple[bool, dict]:
+    def _check_column_naming(self, t_cols: list, s_cols: list) -> tuple[bool, dict]:
         """
-        Check 1.1: Verify column sets are identical (no missing/extra columns).
-        
-        Uses set operations to identify:
-        - missing_in_sql: columns in Talend but not in SQL
-        - extra_in_sql: columns in SQL but not in Talend
-        - common_columns: columns in both DataFrames
-        
-        Args:
-            t_set: Set of Talend column names
-            s_set: Set of SQL column names
-            
-        Returns:
-            (bool, dict): (True if sets are equal, detailed results)
+        Verify the two DataFrames expose exactly the same column names.
+
+        Uses set arithmetic so that column *order* does not affect the result
+        (order is evaluated separately in 1.3).
+
+        Edge cases handled
+        ------------------
+        - Duplicate column names in either DataFrame are detected and reported
+          before the set comparison, because duplicates collapse in a set and
+          would give a false PASS.
+        - Case-sensitive comparison (SQL engines are usually case-sensitive).
         """
-        # Calculate set differences to identify missing and extra columns
-        missing = sorted(t_set - s_set)  # Columns expected but not found
-        extra   = sorted(s_set - t_set)  # Unexpected columns in SQL
-        ok      = t_set == s_set         # Sets must be identical
-        
-        # Log the result with detail about common, missing, and extra columns
-        self._log("1.1 Column naming", ok,
-                  f"{len(t_set & s_set)} common | "
-                  f"missing={missing or 'none'} | extra={extra or 'none'}")
-        
-        # Return pass/fail status and detailed breakdown
+        # ── Null/NaN column name detection ───────────────────────────
+        # NaN column names arise from bad CSV parses (e.g. a trailing
+        # comma adds an unnamed column).  NaN != NaN in Python, so they
+        # survive set comparison silently and cause KeyErrors downstream.
+        t_null_cols = [i for i, c in enumerate(t_cols) if _is_null_name(c)]
+        s_null_cols = [i for i, c in enumerate(s_cols) if _is_null_name(c)]
+
+        if t_null_cols or s_null_cols:
+            msg = (
+                f"NULL/NaN column names detected — "
+                f"Talend positions: {t_null_cols or 'none'} | "
+                f"SQL positions: {s_null_cols or 'none'}"
+            )
+            logger.error(f"[FAIL] 1.1 Column naming  {msg}")
+            return False, {
+                "passed"          : False,
+                "null_name_talend": t_null_cols,
+                "null_name_sql"   : s_null_cols,
+                "missing_in_sql"  : [],
+                "extra_in_sql"    : [],
+                "common_columns"  : [],
+                "error"           : msg,
+            }
+
+        t_set = set(t_cols)
+        s_set = set(s_cols)
+
+        # ── Duplicate detection ──────────────────────────────────────
+        t_dupes = _find_duplicates(t_cols)
+        s_dupes = _find_duplicates(s_cols)
+
+        if t_dupes or s_dupes:
+            msg = (
+                f"Duplicate column names detected – "
+                f"Talend: {t_dupes or 'none'} | SQL: {s_dupes or 'none'}"
+            )
+            logger.error(f"[FAIL] 1.1 Column naming  {msg}")
+            return False, {
+                "passed"         : False,
+                "duplicate_talend": t_dupes,
+                "duplicate_sql"   : s_dupes,
+                "missing_in_sql"  : [],
+                "extra_in_sql"    : [],
+                "common_columns"  : [],
+                "error"           : msg,
+            }
+
+        # ── Set comparison ───────────────────────────────────────────
+        missing = sorted(t_set - s_set)   # in Talend but not SQL
+        extra   = sorted(s_set - t_set)   # in SQL but not Talend
+        common  = sorted(t_set & s_set)
+        ok      = not missing and not extra
+
+        self._log(
+            "1.1 Column naming", ok,
+            f"{len(common)} common | "
+            f"missing_in_sql={missing or 'none'} | "
+            f"extra_in_sql={extra or 'none'}",
+        )
+
         return ok, {
-            "passed":          ok,
-            "missing_in_sql":  missing,
-            "extra_in_sql":    extra,
-            "common_columns":  sorted(t_set & s_set),
+            "passed"        : ok,
+            "missing_in_sql": missing,
+            "extra_in_sql"  : extra,
+            "common_columns": common,
         }
 
-    def _check_column_count(self, t_cols: list, s_cols: list) -> tuple[bool, dict]:
-        """
-        Check 1.2: Verify both DataFrames have the same number of columns.
-        
-        A quick sanity check before deeper structural analysis.
-        Note: Uses lists (to check count) but naming check already verified set equality.
-        
-        Args:
-            t_cols: List of Talend column names (preserves order)
-            s_cols: List of SQL column names (preserves order)
-            
-        Returns:
-            (bool, dict): (True if counts match, detailed results)
-        """
-        # Compare total column counts
-        ok = len(t_cols) == len(s_cols)
-        
-        # Log the result with actual counts
-        self._log("1.2 Column count", ok,
-                  f"Talend={len(t_cols)} | SQL={len(s_cols)}")
-        
-        # Return pass/fail status and counts
-        return ok, {"passed": ok, "talend_count": len(t_cols), "sql_count": len(s_cols)}
+    # ------------------------------------------------------------------
+    # Check 1.2 – Data types
+    # ------------------------------------------------------------------
 
-    def _check_data_types(self, t_set: set, s_set: set) -> tuple[bool, dict]:
+    def _check_data_types(self) -> tuple[bool, dict]:
         """
-        Check 1.3: Verify data types are compatible for all common columns.
-        
-        Compatibility rules:
-        - Same type: always compatible (e.g., int64 == int64)
-        - Different integer types: compatible (int64, int32 are both numeric)
-        - Object/string types: compatible with other object/string types
-        - Otherwise: incompatible (e.g., int64 vs float64)
-        
-        Args:
-            t_set: Set of Talend column names
-            s_set: Set of SQL column names
-            
-        Returns:
-            (bool, dict): (True if all types are compatible, detailed issues)
+        Verify dtype compatibility for every column.
+
+        Compatibility rule: two dtypes are compatible when they belong to
+        the same *family* (numeric, string, bool, datetime, …).  Exact dtype
+        equality is not required — int32 and int64 are both numeric and
+        therefore compatible.
+
+        Edge cases handled
+        ------------------
+        - pandas nullable extension types (Int64, Float32, boolean, string)
+          are mapped to the same families as their numpy counterparts.
+        - datetime64 with different resolutions (ns, us, ms) are compatible.
+        - CategoricalDtype columns: only compatible with other category columns
+          (not with plain object/string) because the underlying representation
+          and allowed values differ.
+        - Unknown/custom dtypes fall back to exact string comparison so they
+          never silently pass.
+        - All-null columns: pandas infers float64 for a column that is entirely
+          NULL (NaN is a float). When one side is all-null and the other is not,
+          a dtype mismatch (e.g. float64 vs object) would be a false FAIL.
+          We detect this, skip the incompatibility, and record a warning instead
+          so the engineer knows to verify that column manually.
         """
-        # Collect type incompatibilities for reporting
-        issues = []
-        
-        # Check type compatibility for each common column
-        for col in sorted(t_set & s_set):
-            # Get dtype as string for both DataFrames
+        issues   = []
+        warnings = []
+
+        for col in self.talend_df.columns:
             td = str(self.talend_df[col].dtype)
             sd = str(self.sql_df[col].dtype)
-            
-            # Determine compatibility:
-            # - Same type is always compatible
-            # - Both in {object, int64, int32} set are compatible (numeric/text)
-            compatible = td == sd or {td, sd} <= {"object", "int64", "int32"}
-            
-            # Record incompatibilities for detailed error reporting
-            if not compatible:
-                issues.append({"column": col, "talend_type": td, "sql_type": sd})
-        
-        # Check passed if no incompatibilities found
-        ok = len(issues) == 0
-        
-        # Log result with summary or list of issues
-        self._log("1.3 Data types", ok,
-                  "all types compatible" if ok
-                  else f"{len(issues)} incompatible columns")
-        
-        # Log details of each incompatibility for user investigation
-        if not ok:
-            for i in issues:
-                logger.warning(
-                    f"  {i['column']:<22} Talend={i['talend_type']} | SQL={i['sql_type']}"
-                )
-        
-        # Return pass/fail status and detailed type issues
-        return ok, {"passed": ok, "type_issues": issues}
 
-    def _check_nullability(self, t_set: set, s_set: set) -> tuple[bool, dict]:
-        """
-        Check 1.4: Verify null ratios are within tolerance for all columns.
-        
-        Compares the proportion of NULL values in each column between Talend and SQL.
-        If the difference exceeds NULL_RATIO_THRESHOLD (from config), flags as failure.
-        
-        Example: If Talend has 5% NULLs and SQL has 12% NULLs, diff is 7%.
-        If NULL_RATIO_THRESHOLD is 5%, this would fail.
-        
-        Args:
-            t_set: Set of Talend column names
-            s_set: Set of SQL column names
-            
-        Returns:
-            (bool, dict): (True if all null ratios within tolerance, detailed issues)
-        """
-        # Collect null ratio discrepancies for reporting
-        issues = []
-        
-        # Check null ratio consistency for each common column
-        for col in sorted(t_set & s_set):
-            # Calculate proportion of NULL values in each DataFrame
-            tn = self.talend_df[col].isnull().mean()  # Talend null ratio (0.0 to 1.0)
-            sn = self.sql_df[col].isnull().mean()     # SQL null ratio (0.0 to 1.0)
-            
-            # Check if difference exceeds threshold
-            if abs(tn - sn) > NULL_RATIO_THRESHOLD:
-                # Record the discrepancy for detailed error reporting
+            if td == sd:
+                continue  # identical dtypes are always compatible
+
+            # ── All-null column guard ────────────────────────────────
+            # If either side is entirely null pandas reports float64
+            # regardless of the intended type. Comparing float64 vs object
+            # would be a false FAIL, so we skip the hard check and warn.
+            t_all_null = self.talend_df[col].isnull().all()
+            s_all_null = self.sql_df[col].isnull().all()
+
+            if t_all_null or s_all_null:
+                side = "Talend" if t_all_null else "SQL"
+                warnings.append(
+                    f"{col}: {side} column is entirely NULL — "
+                    f"dtype comparison skipped (Talend={td}, SQL={sd})"
+                )
+                logger.warning(
+                    f"  [WARN] {col:<25} {side} is all-NULL, "
+                    f"dtype check skipped (Talend={td}, SQL={sd})"
+                )
+                continue
+
+            tf = _type_family(td)
+            sf = _type_family(sd)
+
+            if tf != sf:
                 issues.append({
-                    "column":          col,
-                    "talend_null_pct": round(tn * 100, 2),  # Convert to percentage
-                    "sql_null_pct":    round(sn * 100, 2),  # Convert to percentage
-                    "diff_pct":        round(abs(tn - sn) * 100, 2),  # Absolute difference
+                    "column"       : col,
+                    "talend_type"  : td,
+                    "sql_type"     : sd,
+                    "talend_family": tf,
+                    "sql_family"   : sf,
                 })
-        
-        # Check passed if no null ratio discrepancies found
+
         ok = len(issues) == 0
-        
-        # Log result with summary or count of issues
-        self._log("1.4 Nullability", ok,
-                  "null ratios consistent" if ok
-                  else f"{len(issues)} columns with null diff > {NULL_RATIO_THRESHOLD:.0%}")
-        
-        # Log details of each null ratio discrepancy for investigation
+        self._log(
+            "1.2 Data types", ok,
+            "all types compatible" if ok
+            else f"{len(issues)} incompatible column(s)",
+        )
+
         if not ok:
             for i in issues:
                 logger.warning(
-                    f"  {i['column']:<22} "
-                    f"Talend={i['talend_null_pct']}% | "
-                    f"SQL={i['sql_null_pct']}% | "
-                    f"diff={i['diff_pct']}%"
+                    f"  {i['column']:<25} "
+                    f"Talend={i['talend_type']} ({i['talend_family']})  "
+                    f"SQL={i['sql_type']} ({i['sql_family']})"
                 )
-        
-        # Return pass/fail status and detailed null issues
-        return ok, {"passed": ok, "null_issues": issues}
 
-    def _check_column_order(self, t_cols: list, s_cols: list) -> tuple[bool, dict]:
+        return ok, {"passed": ok, "type_issues": issues, "warnings": warnings}
+
+    # ------------------------------------------------------------------
+    # Check 1.3 – Column order  (warning only)
+    # ------------------------------------------------------------------
+
+    def _check_column_order(
+        self, t_cols: list, s_cols: list
+    ) -> tuple[bool, dict, str | None]:
         """
-        Check 1.5: Verify column order is the same (warning only, does not fail).
-        
-        Unlike other structural checks, a column order mismatch does not prevent
-        further validation. The comparison logic handles column reordering.
-        This check is informational – alerts the user to potential inconsistencies
-        between source and target systems.
-        
-        Args:
-            t_cols: Ordered list of Talend column names
-            s_cols: Ordered list of SQL column names
-            
-        Returns:
-            (bool, dict): (True if order matches, detailed results)
+        Check whether column order is identical (informational only).
+
+        A mismatch does not fail the pipeline — downstream comparison logic
+        aligns columns by name.  The warning is surfaced so engineers are
+        aware of the discrepancy between source and target DDL.
+
+        Returns a third element (warning string | None) so the caller can
+        append it to results["warnings"] without duplicating logic here.
         """
-        # Check if column order is identical using list equality
-        ok = t_cols == s_cols
-        
-        # Log result with appropriate message
-        self._log("1.5 Column order", ok,
-                  "same order" if ok
-                  else "different order (warning only – comparison proceeds)")
-        
-        # Log additional context if order differs (informational only)
+        ok      = t_cols == s_cols
+        warning = None
+
+        self._log(
+            "1.3 Column order", ok,
+            "same order" if ok
+            else "different order (warning only — comparison will proceed)",
+        )
+
         if not ok:
-            logger.warning("  Column order differs but data comparison will proceed.")
-        
-        # Return pass/fail status and both column orders for inspection
-        return ok, {"passed": ok, "talend_order": t_cols, "sql_order": s_cols}
+            warning = (
+                f"Column order differs: "
+                f"Talend={t_cols} | SQL={s_cols}"
+            )
+            logger.warning(f"  {warning}")
+
+        return ok, {"passed": ok, "talend_order": t_cols, "sql_order": s_cols}, warning
 
     # ------------------------------------------------------------------
-    # Helper methods for output formatting and logging
+    # Logging helper
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _print_section():
-        """
-        Print a formatted section header for Layer 1 validation.
-        
-        Improves readability of log output by clearly demarcating the start
-        of Layer 1 validation with visual separators.
-        """
-        # Print blank line for visual separation from previous output
-        print()
-        # Print separator line from config (usually 60 hyphens)
-        print(STEP_LINE)
-        # Print section title
-        print("  LAYER 1 – Structural Validation")
-        # Print closing separator line
-        print(STEP_LINE)
-
-    @staticmethod
-    def _log(name: str, passed: bool, detail: str = ""):
-        """
-        Log a check result with appropriate severity level.
-        
-        Uses logger.success() for passing checks (visible as pass marker)
-        and logger.error() for failing checks (visible as failure marker).
-        
-        Args:
-            name: Name of the check (e.g., "1.1 Column naming")
-            passed: True if check passed, False if check failed
-            detail: Optional detail message with specific failure/success info
-        """
+    def _log(name: str, passed: bool, detail: str = "") -> None:
         if passed:
-            # Log passing checks as success (will show with success color/marker)
-            logger.success(f"[PASS] {name}  {detail}")
+            logger.success(f"[PASS] {name:<30} {detail}")
         else:
-            # Log failing checks as error (will show with error color/marker)
-            logger.error(f"[FAIL] {name}  {detail}")
+            logger.error(f"[FAIL] {name:<30} {detail}")
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers
+# ---------------------------------------------------------------------------
+
+def _find_duplicates(cols: list) -> list[str]:
+    """Return sorted list of column names that appear more than once."""
+    seen  = set()
+    dupes = set()
+    for c in cols:
+        if c in seen:
+            dupes.add(c)
+        seen.add(c)
+    return sorted(dupes)
+
+
+def _is_null_name(col) -> bool:
+    """
+    Return True if a column name is None or NaN.
+
+    NaN column names arise from trailing commas in CSV files or malformed
+    DDL. They cannot be safely used as dict keys or in set operations
+    (NaN != NaN), so they must be caught before any comparison logic runs.
+    """
+    if col is None:
+        return True
+    try:
+        # float('nan') and numpy NaN both satisfy this check
+        return col != col   # NaN is the only value not equal to itself
+    except TypeError:
+        return False

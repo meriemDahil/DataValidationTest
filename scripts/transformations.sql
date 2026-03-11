@@ -1,28 +1,20 @@
--- sql/transformation.sql
--- Mock transformation: revenue summary per customer region and product category
--- This is the query whose output we want to validate against the Talend reference
-
 SELECT
-    c.region,
-    c.segment,
-    p.category,
-    COUNT(s.sale_id)                                            AS total_orders,
-    SUM(s.quantity)                                             AS total_units,
-    ROUND(
-        SUM(s.quantity * p.unit_price * (1 - s.discount)), 2
-    )                                                           AS total_revenue,
-    ROUND(
-        AVG(s.quantity * p.unit_price * (1 - s.discount)), 2
-    )                                                           AS avg_order_value
-FROM
-    fact_sales      s
-    JOIN dim_customer c ON s.customer_id = c.customer_id
-    JOIN dim_product  p ON s.product_id  = p.product_id
-GROUP BY
-    c.region,
-    c.segment,
-    p.category
-ORDER BY
-    c.region,
-    c.segment,
-    p.category;
+    s.belnr                              AS invoice_id,
+    s.sap_vendor_id                      AS vendor_id,
+    v.vendor_name                        AS vendor_name,
+    v.country_code                       AS country_code,
+    v.payment_terms                      AS payment_terms,
+    s.payment_status_raw                 AS payment_status,
+    s.waers                              AS currency,
+    s.wrbtr                              AS gross_amount,
+    s.mwskz                              AS tax_code,
+    t.tax_rate                           AS tax_rate,
+    ROUND(s.wrbtr * (1 - t.tax_rate), 2) AS net_amount,
+    s.bldat                              AS posting_date,
+    s.zfbdt                              AS payment_date,
+    s.zlsch                              AS payment_method
+FROM stg_sap_input s
+LEFT JOIN stg_vendor_ref v ON s.sap_vendor_id = v.sap_vendor_id
+LEFT JOIN stg_tax_rates  t ON s.mwskz = t.tax_code
+WHERE s.payment_status_raw IN ('PAID', 'PENDING')
+LIMIT 50;

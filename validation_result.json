@@ -2,55 +2,99 @@
   "decision": "PASS",
   "match_rate": 1.0,
   "threshold": 0.95,
-  "talend_rows": 15,
-  "sql_rows": 15,
-  "run_date": "2026-03-11 01:14:58",
+  "talend_rows": 40,
+  "sql_rows": 40,
+  "run_date": "2026-03-12 00:13:29",
   "talend_path": "data/talend_reference.csv",
   "sql_table": "stg_output",
   "fail_reasons": [],
+  "warnings": [],
   "structure": {
-    "talend_row_count": 15,
-    "sql_row_count": 15,
+    "talend_row_count": 40,
+    "sql_row_count": 40,
     "row_count_match": true,
     "column_match": true,
     "columns_only_in_talend": [],
     "columns_only_in_sql": [],
     "common_columns": [
-      "avg_order_value",
-      "category",
-      "region",
-      "segment",
-      "total_orders",
-      "total_revenue",
-      "total_units"
+      "country_code",
+      "currency",
+      "gross_amount",
+      "invoice_id",
+      "net_amount",
+      "payment_date",
+      "payment_method",
+      "payment_status",
+      "payment_terms",
+      "posting_date",
+      "tax_code",
+      "tax_rate",
+      "vendor_id",
+      "vendor_name"
     ]
   },
   "exact": {
-    "segment": {
+    "country_code": {
       "passed": true,
       "mismatches": 0,
       "reason": "All values match"
     },
-    "category": {
+    "payment_terms": {
       "passed": true,
       "mismatches": 0,
       "reason": "All values match"
     },
-    "total_orders": {
+    "payment_status": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "All values match"
+    },
+    "currency": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "All values match"
+    },
+    "tax_code": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "All values match"
+    },
+    "payment_method": {
       "passed": true,
       "mismatches": 0,
       "reason": "All values match"
     }
   },
   "rounding": {
-    "total_revenue": {
+    "gross_amount": {
       "passed": true,
       "mismatches": 0,
       "reason": "Relative tolerance 1.0%",
       "talend_sample": [],
       "sql_sample": []
     },
-    "avg_order_value": {
+    "tax_rate": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "Relative tolerance 1.0%",
+      "talend_sample": [],
+      "sql_sample": []
+    },
+    "net_amount": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "Relative tolerance 1.0%",
+      "talend_sample": [],
+      "sql_sample": []
+    },
+    "posting_date": {
+      "passed": true,
+      "mismatches": 0,
+      "reason": "Relative tolerance 1.0%",
+      "talend_sample": [],
+      "sql_sample": []
+    },
+    "payment_date": {
       "passed": true,
       "mismatches": 0,
       "reason": "Relative tolerance 1.0%",
@@ -59,8 +103,8 @@
     }
   },
   "row_level": {
-    "total_rows": 15,
-    "matched_rows": 15,
+    "total_rows": 40,
+    "matched_rows": 40,
     "diff_rows": 0,
     "match_rate": 1.0,
     "sample_diffs": [],
@@ -70,57 +114,70 @@
     "layer1": {
       "layer": 1,
       "passed": true,
+      "warnings": [],
       "checks": {
         "1.1_column_naming": {
           "passed": true,
           "missing_in_sql": [],
           "extra_in_sql": [],
           "common_columns": [
-            "avg_order_value",
-            "category",
-            "region",
-            "segment",
-            "total_orders",
-            "total_revenue",
-            "total_units"
+            "country_code",
+            "currency",
+            "gross_amount",
+            "invoice_id",
+            "net_amount",
+            "payment_date",
+            "payment_method",
+            "payment_status",
+            "payment_terms",
+            "posting_date",
+            "tax_code",
+            "tax_rate",
+            "vendor_id",
+            "vendor_name"
           ]
         },
-        "1.2_column_count": {
+        "1.2_data_types": {
           "passed": true,
-          "talend_count": 7,
-          "sql_count": 7
+          "type_issues": [],
+          "warnings": []
         },
-        "1.3_data_types": {
-          "passed": true,
-          "type_issues": []
-        },
-        "1.4_nullability": {
-          "passed": true,
-          "null_issues": []
-        },
-        "1.5_column_order": {
+        "1.3_column_order": {
           "passed": true,
           "talend_order": [
-            "region",
-            "segment",
-            "category",
-            "total_orders",
-            "total_units",
-            "total_revenue",
-            "avg_order_value"
+            "invoice_id",
+            "vendor_id",
+            "vendor_name",
+            "country_code",
+            "payment_terms",
+            "payment_status",
+            "currency",
+            "gross_amount",
+            "tax_code",
+            "tax_rate",
+            "net_amount",
+            "posting_date",
+            "payment_date",
+            "payment_method"
           ],
           "sql_order": [
-            "region",
-            "segment",
-            "category",
-            "total_orders",
-            "total_units",
-            "total_revenue",
-            "avg_order_value"
+            "invoice_id",
+            "vendor_id",
+            "vendor_name",
+            "country_code",
+            "payment_terms",
+            "payment_status",
+            "currency",
+            "gross_amount",
+            "tax_code",
+            "tax_rate",
+            "net_amount",
+            "posting_date",
+            "payment_date",
+            "payment_method"
           ]
         }
-      },
-      "fatal": false
+      }
     },
     "layer2": {
       "layer": 2,
@@ -128,13 +185,13 @@
       "checks": {
         "2.1_row_count": {
           "passed": true,
-          "talend_rows": 15,
-          "sql_rows": 15,
+          "talend_rows": 40,
+          "sql_rows": 40,
           "diff": 0
         },
         "2.2_row_hash": {
           "passed": true,
-          "matched_hashes": 15,
+          "matched_hashes": 40,
           "only_in_talend": 0,
           "only_in_sql": 0,
           "match_rate": 1.0
@@ -143,13 +200,20 @@
           "passed": true,
           "differing_columns": [],
           "clean_columns": [
-            "avg_order_value",
-            "category",
-            "region",
-            "segment",
-            "total_orders",
-            "total_revenue",
-            "total_units"
+            "country_code",
+            "currency",
+            "gross_amount",
+            "invoice_id",
+            "net_amount",
+            "payment_date",
+            "payment_method",
+            "payment_status",
+            "payment_terms",
+            "posting_date",
+            "tax_code",
+            "tax_rate",
+            "vendor_id",
+            "vendor_name"
           ]
         },
         "2.4_targeted_diff": {
@@ -166,24 +230,39 @@
       "passed": true,
       "checks": {
         "3.2_exact_match": {
-          "segment": {
+          "country_code": {
             "passed": true,
             "mismatches": 0,
             "reason": "All values match"
           },
-          "category": {
+          "payment_terms": {
             "passed": true,
             "mismatches": 0,
             "reason": "All values match"
           },
-          "total_orders": {
+          "payment_status": {
+            "passed": true,
+            "mismatches": 0,
+            "reason": "All values match"
+          },
+          "currency": {
+            "passed": true,
+            "mismatches": 0,
+            "reason": "All values match"
+          },
+          "tax_code": {
+            "passed": true,
+            "mismatches": 0,
+            "reason": "All values match"
+          },
+          "payment_method": {
             "passed": true,
             "mismatches": 0,
             "reason": "All values match"
           }
         },
         "3.3_relative_tolerance": {
-          "total_revenue": {
+          "gross_amount": {
             "passed": true,
             "tolerance": "1.0%",
             "mismatches": 0,
@@ -191,7 +270,31 @@
             "talend_sample": [],
             "sql_sample": []
           },
-          "avg_order_value": {
+          "tax_rate": {
+            "passed": true,
+            "tolerance": "1.0%",
+            "mismatches": 0,
+            "sample": [],
+            "talend_sample": [],
+            "sql_sample": []
+          },
+          "net_amount": {
+            "passed": true,
+            "tolerance": "1.0%",
+            "mismatches": 0,
+            "sample": [],
+            "talend_sample": [],
+            "sql_sample": []
+          },
+          "posting_date": {
+            "passed": true,
+            "tolerance": "1.0%",
+            "mismatches": 0,
+            "sample": [],
+            "talend_sample": [],
+            "sql_sample": []
+          },
+          "payment_date": {
             "passed": true,
             "tolerance": "1.0%",
             "mismatches": 0,
@@ -202,44 +305,65 @@
         },
         "3.4_aggregations": [
           {
-            "label": "total_revenue by segment",
-            "agg_col": "total_revenue",
-            "group_col": "segment",
+            "label": "gross_amount by country_code",
+            "agg_col": "gross_amount",
+            "group_col": "country_code",
             "passed": true,
             "issues": []
           },
           {
-            "label": "total_revenue by category",
-            "agg_col": "total_revenue",
-            "group_col": "category",
+            "label": "gross_amount by payment_terms",
+            "agg_col": "gross_amount",
+            "group_col": "payment_terms",
             "passed": true,
             "issues": []
           },
           {
-            "label": "total_revenue by total_orders",
-            "agg_col": "total_revenue",
-            "group_col": "total_orders",
+            "label": "gross_amount by payment_status",
+            "agg_col": "gross_amount",
+            "group_col": "payment_status",
             "passed": true,
             "issues": []
           },
           {
-            "label": "avg_order_value by segment",
-            "agg_col": "avg_order_value",
-            "group_col": "segment",
+            "label": "gross_amount by currency",
+            "agg_col": "gross_amount",
+            "group_col": "currency",
             "passed": true,
             "issues": []
           },
           {
-            "label": "avg_order_value by category",
-            "agg_col": "avg_order_value",
-            "group_col": "category",
+            "label": "gross_amount by tax_code",
+            "agg_col": "gross_amount",
+            "group_col": "tax_code",
             "passed": true,
             "issues": []
           },
           {
-            "label": "avg_order_value by total_orders",
-            "agg_col": "avg_order_value",
-            "group_col": "total_orders",
+            "label": "gross_amount by payment_method",
+            "agg_col": "gross_amount",
+            "group_col": "payment_method",
+            "passed": true,
+            "issues": []
+          },
+          {
+            "label": "tax_rate by country_code",
+            "agg_col": "tax_rate",
+            "group_col": "country_code",
+            "passed": true,
+            "issues": []
+          },
+          {
+            "label": "tax_rate by payment_terms",
+            "agg_col": "tax_rate",
+            "group_col": "payment_terms",
+            "passed": true,
+            "issues": []
+          },
+          {
+            "label": "tax_rate by payment_status",
+            "agg_col": "tax_rate",
+            "group_col": "payment_status",
             "passed": true,
             "issues": []
           }
@@ -255,68 +379,8 @@
           "passed": true,
           "issues": [],
           "all_stats": {
-            "avg_order_value": {
-              "column": "avg_order_value",
-              "numeric": true,
-              "null_ratio": {
-                "talend": 0.0,
-                "sql": 0.0,
-                "diff": 0.0
-              },
-              "cardinality": {
-                "talend": 15,
-                "sql": 15,
-                "diff": 0
-              },
-              "stats": {
-                "min": {
-                  "talend": 21.96,
-                  "sql": 21.96
-                },
-                "max": {
-                  "talend": 2160.0,
-                  "sql": 2160.0
-                },
-                "mean": {
-                  "talend": 567.644,
-                  "sql": 567.644
-                },
-                "std": {
-                  "talend": 558.8618,
-                  "sql": 558.8618
-                }
-              },
-              "percentiles": {
-                "P50": {
-                  "talend": 430.0,
-                  "sql": 430.0
-                },
-                "P95": {
-                  "talend": 1404.0,
-                  "sql": 1404.0
-                },
-                "P99": {
-                  "talend": 2008.8,
-                  "sql": 2008.8
-                }
-              }
-            },
-            "category": {
-              "column": "category",
-              "numeric": false,
-              "null_ratio": {
-                "talend": 0.0,
-                "sql": 0.0,
-                "diff": 0.0
-              },
-              "cardinality": {
-                "talend": 3,
-                "sql": 3,
-                "diff": 0
-              }
-            },
-            "region": {
-              "column": "region",
+            "country_code": {
+              "column": "country_code",
               "numeric": false,
               "null_ratio": {
                 "talend": 0.0,
@@ -329,22 +393,8 @@
                 "diff": 0
               }
             },
-            "segment": {
-              "column": "segment",
-              "numeric": false,
-              "null_ratio": {
-                "talend": 0.0,
-                "sql": 0.0,
-                "diff": 0.0
-              },
-              "cardinality": {
-                "talend": 3,
-                "sql": 3,
-                "diff": 0
-              }
-            },
-            "total_orders": {
-              "column": "total_orders",
+            "currency": {
+              "column": "currency",
               "numeric": false,
               "null_ratio": {
                 "talend": 0.0,
@@ -357,8 +407,8 @@
                 "diff": 0
               }
             },
-            "total_revenue": {
-              "column": "total_revenue",
+            "gross_amount": {
+              "column": "gross_amount",
               "numeric": true,
               "null_ratio": {
                 "talend": 0.0,
@@ -366,45 +416,45 @@
                 "diff": 0.0
               },
               "cardinality": {
-                "talend": 15,
-                "sql": 15,
+                "talend": 40,
+                "sql": 40,
                 "diff": 0
               },
               "stats": {
                 "min": {
-                  "talend": 21.96,
-                  "sql": 21.96
+                  "talend": 3268.93,
+                  "sql": 3268.93
                 },
                 "max": {
-                  "talend": 2160.0,
-                  "sql": 2160.0
+                  "talend": 47150.33,
+                  "sql": 47150.33
                 },
                 "mean": {
-                  "talend": 567.644,
-                  "sql": 567.644
+                  "talend": 25106.2973,
+                  "sql": 25106.2973
                 },
                 "std": {
-                  "talend": 558.8618,
-                  "sql": 558.8618
+                  "talend": 13324.5713,
+                  "sql": 13324.5713
                 }
               },
               "percentiles": {
                 "P50": {
-                  "talend": 430.0,
-                  "sql": 430.0
+                  "talend": 26075.935,
+                  "sql": 26075.935
                 },
                 "P95": {
-                  "talend": 1404.0,
-                  "sql": 1404.0
+                  "talend": 44397.5215,
+                  "sql": 44397.5215
                 },
                 "P99": {
-                  "talend": 2008.8,
-                  "sql": 2008.8
+                  "talend": 46821.3767,
+                  "sql": 46821.3767
                 }
               }
             },
-            "total_units": {
-              "column": "total_units",
+            "invoice_id": {
+              "column": "invoice_id",
               "numeric": false,
               "null_ratio": {
                 "talend": 0.0,
@@ -412,8 +462,276 @@
                 "diff": 0.0
               },
               "cardinality": {
-                "talend": 7,
-                "sql": 7,
+                "talend": 40,
+                "sql": 40,
+                "diff": 0
+              }
+            },
+            "net_amount": {
+              "column": "net_amount",
+              "numeric": true,
+              "null_ratio": {
+                "talend": 100.0,
+                "sql": 100.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 0,
+                "sql": 0,
+                "diff": 0
+              },
+              "stats": {
+                "min": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "max": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "mean": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "std": {
+                  "talend": NaN,
+                  "sql": NaN
+                }
+              },
+              "percentiles": {
+                "P50": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "P95": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "P99": {
+                  "talend": NaN,
+                  "sql": NaN
+                }
+              }
+            },
+            "payment_date": {
+              "column": "payment_date",
+              "numeric": true,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 27,
+                "sql": 27,
+                "diff": 0
+              },
+              "stats": {
+                "min": {
+                  "talend": 20260101.0,
+                  "sql": 20260101.0
+                },
+                "max": {
+                  "talend": 20260301.0,
+                  "sql": 20260301.0
+                },
+                "mean": {
+                  "talend": 20260168.45,
+                  "sql": 20260168.45
+                },
+                "std": {
+                  "talend": 64.0356,
+                  "sql": 64.0356
+                }
+              },
+              "percentiles": {
+                "P50": {
+                  "talend": 20260129.5,
+                  "sql": 20260129.5
+                },
+                "P95": {
+                  "talend": 20260301.0,
+                  "sql": 20260301.0
+                },
+                "P99": {
+                  "talend": 20260301.0,
+                  "sql": 20260301.0
+                }
+              }
+            },
+            "payment_method": {
+              "column": "payment_method",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 1,
+                "sql": 1,
+                "diff": 0
+              }
+            },
+            "payment_status": {
+              "column": "payment_status",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 2,
+                "sql": 2,
+                "diff": 0
+              }
+            },
+            "payment_terms": {
+              "column": "payment_terms",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 4,
+                "sql": 4,
+                "diff": 0
+              }
+            },
+            "posting_date": {
+              "column": "posting_date",
+              "numeric": true,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 32,
+                "sql": 32,
+                "diff": 0
+              },
+              "stats": {
+                "min": {
+                  "talend": 20260104.0,
+                  "sql": 20260104.0
+                },
+                "max": {
+                  "talend": 20260302.0,
+                  "sql": 20260302.0
+                },
+                "mean": {
+                  "talend": 20260169.35,
+                  "sql": 20260169.35
+                },
+                "std": {
+                  "talend": 56.5271,
+                  "sql": 56.5271
+                }
+              },
+              "percentiles": {
+                "P50": {
+                  "talend": 20260201.5,
+                  "sql": 20260201.5
+                },
+                "P95": {
+                  "talend": 20260227.85,
+                  "sql": 20260227.85
+                },
+                "P99": {
+                  "talend": 20260301.61,
+                  "sql": 20260301.61
+                }
+              }
+            },
+            "tax_code": {
+              "column": "tax_code",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 4,
+                "sql": 4,
+                "diff": 0
+              }
+            },
+            "tax_rate": {
+              "column": "tax_rate",
+              "numeric": true,
+              "null_ratio": {
+                "talend": 100.0,
+                "sql": 100.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 0,
+                "sql": 0,
+                "diff": 0
+              },
+              "stats": {
+                "min": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "max": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "mean": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "std": {
+                  "talend": NaN,
+                  "sql": NaN
+                }
+              },
+              "percentiles": {
+                "P50": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "P95": {
+                  "talend": NaN,
+                  "sql": NaN
+                },
+                "P99": {
+                  "talend": NaN,
+                  "sql": NaN
+                }
+              }
+            },
+            "vendor_id": {
+              "column": "vendor_id",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 9,
+                "sql": 9,
+                "diff": 0
+              }
+            },
+            "vendor_name": {
+              "column": "vendor_name",
+              "numeric": false,
+              "null_ratio": {
+                "talend": 0.0,
+                "sql": 0.0,
+                "diff": 0.0
+              },
+              "cardinality": {
+                "talend": 9,
+                "sql": 9,
                 "diff": 0
               }
             }
@@ -429,100 +747,82 @@
         },
         "4.5_percentiles": {
           "data": {
-            "avg_order_value": {
+            "gross_amount": {
               "P50": {
-                "talend": 430.0,
-                "sql": 430.0
+                "talend": 26075.935,
+                "sql": 26075.935
               },
               "P95": {
-                "talend": 1404.0,
-                "sql": 1404.0
+                "talend": 44397.5215,
+                "sql": 44397.5215
               },
               "P99": {
-                "talend": 2008.8,
-                "sql": 2008.8
+                "talend": 46821.3767,
+                "sql": 46821.3767
               }
             },
-            "total_revenue": {
+            "net_amount": {
               "P50": {
-                "talend": 430.0,
-                "sql": 430.0
+                "talend": NaN,
+                "sql": NaN
               },
               "P95": {
-                "talend": 1404.0,
-                "sql": 1404.0
+                "talend": NaN,
+                "sql": NaN
               },
               "P99": {
-                "talend": 2008.8,
-                "sql": 2008.8
+                "talend": NaN,
+                "sql": NaN
+              }
+            },
+            "payment_date": {
+              "P50": {
+                "talend": 20260129.5,
+                "sql": 20260129.5
+              },
+              "P95": {
+                "talend": 20260301.0,
+                "sql": 20260301.0
+              },
+              "P99": {
+                "talend": 20260301.0,
+                "sql": 20260301.0
+              }
+            },
+            "posting_date": {
+              "P50": {
+                "talend": 20260201.5,
+                "sql": 20260201.5
+              },
+              "P95": {
+                "talend": 20260227.85,
+                "sql": 20260227.85
+              },
+              "P99": {
+                "talend": 20260301.61,
+                "sql": 20260301.61
+              }
+            },
+            "tax_rate": {
+              "P50": {
+                "talend": NaN,
+                "sql": NaN
+              },
+              "P95": {
+                "talend": NaN,
+                "sql": NaN
+              },
+              "P99": {
+                "talend": NaN,
+                "sql": NaN
               }
             }
           }
         }
       },
       "all_col_stats": {
-        "avg_order_value": {
-          "column": "avg_order_value",
-          "numeric": true,
-          "null_ratio": {
-            "talend": 0.0,
-            "sql": 0.0,
-            "diff": 0.0
-          },
-          "cardinality": {
-            "talend": 15,
-            "sql": 15,
-            "diff": 0
-          },
-          "stats": {
-            "min": {
-              "talend": 21.96,
-              "sql": 21.96
-            },
-            "max": {
-              "talend": 2160.0,
-              "sql": 2160.0
-            },
-            "mean": {
-              "talend": 567.644,
-              "sql": 567.644
-            },
-            "std": {
-              "talend": 558.8618,
-              "sql": 558.8618
-            }
-          },
-          "percentiles": {
-            "P50": {
-              "talend": 430.0,
-              "sql": 430.0
-            },
-            "P95": {
-              "talend": 1404.0,
-              "sql": 1404.0
-            },
-            "P99": {
-              "talend": 2008.8,
-              "sql": 2008.8
-            }
-          }
-        },
-        "category": {
-          "column": "category",
-          "numeric": false,
-          "null_ratio": {
-            "talend": 0.0,
-            "sql": 0.0,
-            "diff": 0.0
-          },
-          "cardinality": {
-            "talend": 3,
-            "sql": 3,
-            "diff": 0
-          }
-        },
-        "region": {
-          "column": "region",
+        "country_code": {
+          "column": "country_code",
           "numeric": false,
           "null_ratio": {
             "talend": 0.0,
@@ -535,22 +835,8 @@
             "diff": 0
           }
         },
-        "segment": {
-          "column": "segment",
-          "numeric": false,
-          "null_ratio": {
-            "talend": 0.0,
-            "sql": 0.0,
-            "diff": 0.0
-          },
-          "cardinality": {
-            "talend": 3,
-            "sql": 3,
-            "diff": 0
-          }
-        },
-        "total_orders": {
-          "column": "total_orders",
+        "currency": {
+          "column": "currency",
           "numeric": false,
           "null_ratio": {
             "talend": 0.0,
@@ -563,8 +849,8 @@
             "diff": 0
           }
         },
-        "total_revenue": {
-          "column": "total_revenue",
+        "gross_amount": {
+          "column": "gross_amount",
           "numeric": true,
           "null_ratio": {
             "talend": 0.0,
@@ -572,45 +858,45 @@
             "diff": 0.0
           },
           "cardinality": {
-            "talend": 15,
-            "sql": 15,
+            "talend": 40,
+            "sql": 40,
             "diff": 0
           },
           "stats": {
             "min": {
-              "talend": 21.96,
-              "sql": 21.96
+              "talend": 3268.93,
+              "sql": 3268.93
             },
             "max": {
-              "talend": 2160.0,
-              "sql": 2160.0
+              "talend": 47150.33,
+              "sql": 47150.33
             },
             "mean": {
-              "talend": 567.644,
-              "sql": 567.644
+              "talend": 25106.2973,
+              "sql": 25106.2973
             },
             "std": {
-              "talend": 558.8618,
-              "sql": 558.8618
+              "talend": 13324.5713,
+              "sql": 13324.5713
             }
           },
           "percentiles": {
             "P50": {
-              "talend": 430.0,
-              "sql": 430.0
+              "talend": 26075.935,
+              "sql": 26075.935
             },
             "P95": {
-              "talend": 1404.0,
-              "sql": 1404.0
+              "talend": 44397.5215,
+              "sql": 44397.5215
             },
             "P99": {
-              "talend": 2008.8,
-              "sql": 2008.8
+              "talend": 46821.3767,
+              "sql": 46821.3767
             }
           }
         },
-        "total_units": {
-          "column": "total_units",
+        "invoice_id": {
+          "column": "invoice_id",
           "numeric": false,
           "null_ratio": {
             "talend": 0.0,
@@ -618,8 +904,276 @@
             "diff": 0.0
           },
           "cardinality": {
-            "talend": 7,
-            "sql": 7,
+            "talend": 40,
+            "sql": 40,
+            "diff": 0
+          }
+        },
+        "net_amount": {
+          "column": "net_amount",
+          "numeric": true,
+          "null_ratio": {
+            "talend": 100.0,
+            "sql": 100.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 0,
+            "sql": 0,
+            "diff": 0
+          },
+          "stats": {
+            "min": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "max": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "mean": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "std": {
+              "talend": NaN,
+              "sql": NaN
+            }
+          },
+          "percentiles": {
+            "P50": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "P95": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "P99": {
+              "talend": NaN,
+              "sql": NaN
+            }
+          }
+        },
+        "payment_date": {
+          "column": "payment_date",
+          "numeric": true,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 27,
+            "sql": 27,
+            "diff": 0
+          },
+          "stats": {
+            "min": {
+              "talend": 20260101.0,
+              "sql": 20260101.0
+            },
+            "max": {
+              "talend": 20260301.0,
+              "sql": 20260301.0
+            },
+            "mean": {
+              "talend": 20260168.45,
+              "sql": 20260168.45
+            },
+            "std": {
+              "talend": 64.0356,
+              "sql": 64.0356
+            }
+          },
+          "percentiles": {
+            "P50": {
+              "talend": 20260129.5,
+              "sql": 20260129.5
+            },
+            "P95": {
+              "talend": 20260301.0,
+              "sql": 20260301.0
+            },
+            "P99": {
+              "talend": 20260301.0,
+              "sql": 20260301.0
+            }
+          }
+        },
+        "payment_method": {
+          "column": "payment_method",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 1,
+            "sql": 1,
+            "diff": 0
+          }
+        },
+        "payment_status": {
+          "column": "payment_status",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 2,
+            "sql": 2,
+            "diff": 0
+          }
+        },
+        "payment_terms": {
+          "column": "payment_terms",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 4,
+            "sql": 4,
+            "diff": 0
+          }
+        },
+        "posting_date": {
+          "column": "posting_date",
+          "numeric": true,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 32,
+            "sql": 32,
+            "diff": 0
+          },
+          "stats": {
+            "min": {
+              "talend": 20260104.0,
+              "sql": 20260104.0
+            },
+            "max": {
+              "talend": 20260302.0,
+              "sql": 20260302.0
+            },
+            "mean": {
+              "talend": 20260169.35,
+              "sql": 20260169.35
+            },
+            "std": {
+              "talend": 56.5271,
+              "sql": 56.5271
+            }
+          },
+          "percentiles": {
+            "P50": {
+              "talend": 20260201.5,
+              "sql": 20260201.5
+            },
+            "P95": {
+              "talend": 20260227.85,
+              "sql": 20260227.85
+            },
+            "P99": {
+              "talend": 20260301.61,
+              "sql": 20260301.61
+            }
+          }
+        },
+        "tax_code": {
+          "column": "tax_code",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 4,
+            "sql": 4,
+            "diff": 0
+          }
+        },
+        "tax_rate": {
+          "column": "tax_rate",
+          "numeric": true,
+          "null_ratio": {
+            "talend": 100.0,
+            "sql": 100.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 0,
+            "sql": 0,
+            "diff": 0
+          },
+          "stats": {
+            "min": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "max": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "mean": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "std": {
+              "talend": NaN,
+              "sql": NaN
+            }
+          },
+          "percentiles": {
+            "P50": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "P95": {
+              "talend": NaN,
+              "sql": NaN
+            },
+            "P99": {
+              "talend": NaN,
+              "sql": NaN
+            }
+          }
+        },
+        "vendor_id": {
+          "column": "vendor_id",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 9,
+            "sql": 9,
+            "diff": 0
+          }
+        },
+        "vendor_name": {
+          "column": "vendor_name",
+          "numeric": false,
+          "null_ratio": {
+            "talend": 0.0,
+            "sql": 0.0,
+            "diff": 0.0
+          },
+          "cardinality": {
+            "talend": 9,
+            "sql": 9,
             "diff": 0
           }
         }
